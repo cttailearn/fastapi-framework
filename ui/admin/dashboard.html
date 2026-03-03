@@ -1,0 +1,28 @@
+{% extends "admin/base.html" %}
+{% block content %}
+  <div class="topbar">
+    <h1>概览</h1>
+    <div class="row">
+      <a class="pill" href="/admin/api-keys">API-Key</a>
+      <a class="pill" href="/admin/tasks">任务</a>
+      <a class="pill" href="/admin/requests">请求</a>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="stat"><div class="k">用户</div><div class="v">{{ counts.users }}</div></div>
+    <div class="stat"><div class="k">API-Key</div><div class="v">{{ counts.api_keys }}</div></div>
+    <div class="stat"><div class="k">任务</div><div class="v">{{ counts.tasks }}</div></div>
+    <div class="stat"><div class="k">请求</div><div class="v">{{ counts.requests }}</div></div>
+  </div>
+
+  <div style="margin-top: 12px;" class="card">
+    <div class="row" style="justify-content: space-between;">
+      <div>
+        <div style="font-weight: 800;">系统状态</div>
+        <div class="muted" style="margin-top: 4px;">数据来源：SQLite · 最新请求/任务信息见左侧菜单</div>
+      </div>
+      <a class="pill" href="/docs" target="_blank" rel="noreferrer">OpenAPI</a>
+    </div>
+  </div>
+{% endblock %}

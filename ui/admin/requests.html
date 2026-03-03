@@ -1,0 +1,43 @@
+{% extends "admin/base.html" %}
+{% block content %}
+  <div class="topbar">
+    <h1>请求日志</h1>
+    <div class="row">
+      <a class="pill" href="/admin">返回概览</a>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="muted" style="margin-bottom: 10px;">最近 200 条请求</div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>时间</th>
+            <th>方法</th>
+            <th>路径</th>
+            <th>状态</th>
+            <th>耗时</th>
+            <th>IP</th>
+            <th>用户</th>
+            <th>API-Key</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for r in logs %}
+            <tr>
+              <td class="muted">{{ r.ts }}</td>
+              <td><span class="tag">{{ r.method }}</span></td>
+              <td class="mono">{{ r.path }}</td>
+              <td><span class="tag">{{ r.status_code }}</span></td>
+              <td class="muted">{{ r.latency_ms }}ms</td>
+              <td class="muted">{{ r.ip or "-" }}</td>
+              <td class="muted">{{ r.username or "-" }}</td>
+              <td class="muted mono">{{ r.api_key_prefix or "-" }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+{% endblock %}
