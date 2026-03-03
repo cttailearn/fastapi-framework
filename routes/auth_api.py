@@ -4,12 +4,12 @@ import sqlite3
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from auth import AuthenticatedUser, get_current_user, get_user_repo
-from config import get_settings
+from core.config import get_settings
+from core.security import hash_password, issue_access_token, verify_password
+from deps.auth import AuthenticatedUser, get_current_user, get_user_repo
 from repositories.user_repo import UserRepository
 from schemas.auth import LoginRequest, RegisterRequest, TokenResponse, UserPublic
 from schemas.response import APIResponse, success_response
-from security import hash_password, issue_access_token, verify_password
 
 router = APIRouter(prefix="/v1/auth", tags=["auth"])
 

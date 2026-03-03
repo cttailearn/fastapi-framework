@@ -6,13 +6,13 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request, status
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from fastapi.templating import Jinja2Templates
 
-from auth import AuthenticatedUser, get_api_key_repo, get_user_repo, require_admin_user
-from config import get_settings
+from core.config import get_settings
+from core.security import api_key_prefix, generate_api_key, hash_api_key, issue_access_token, verify_password
+from deps.auth import AuthenticatedUser, get_api_key_repo, get_user_repo, require_admin_user
 from repositories.api_key_repo import ApiKeyRepository
 from repositories.request_log_repo import RequestLogRepository
 from repositories.task_repo import TaskRepository
 from repositories.user_repo import UserRepository
-from security import api_key_prefix, generate_api_key, hash_api_key, issue_access_token, verify_password
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 

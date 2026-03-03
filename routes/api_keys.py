@@ -4,12 +4,12 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from auth import AuthenticatedUser, get_api_key_repo, get_current_user
-from config import get_settings
+from core.config import get_settings
+from core.security import api_key_prefix, generate_api_key, hash_api_key
+from deps.auth import AuthenticatedUser, get_api_key_repo, get_current_user
 from repositories.api_key_repo import ApiKeyRepository
 from schemas.api_key import ApiKeyCreateRequest, ApiKeyCreated, ApiKeyPublic
 from schemas.response import APIResponse, success_response
-from security import api_key_prefix, generate_api_key, hash_api_key
 
 router = APIRouter(prefix="/v1/api-keys", tags=["api-keys"])
 

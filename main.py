@@ -15,8 +15,8 @@ from fastapi.responses import JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
-from config import get_settings
-from database import SQLiteDatabase
+from core.config import get_settings
+from core.database import SQLiteDatabase
 from repositories.api_key_repo import ApiKeyRepository
 from repositories.request_log_repo import RequestLogRepository
 from repositories.task_repo import TaskRepository

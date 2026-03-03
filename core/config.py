@@ -23,7 +23,7 @@ def get_settings() -> Settings:
     if _SETTINGS is not None:
         return _SETTINGS
 
-    base_dir = Path(__file__).resolve().parent
+    base_dir = Path(__file__).resolve().parent.parent
     default_db_path = base_dir / "db" / "app.sqlite3"
     db_path = Path(os.getenv("APP_DB_PATH", str(default_db_path))).resolve()
     secret_key = os.getenv("APP_SECRET_KEY", "dev-secret-change-me")

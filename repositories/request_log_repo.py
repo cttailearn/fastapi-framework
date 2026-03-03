@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from database import SQLiteDatabase
+from core.database import SQLiteDatabase
 
 
 class RequestLogRepository:

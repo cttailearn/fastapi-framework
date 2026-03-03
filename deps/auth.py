@@ -1,4 +1,3 @@
-"""认证依赖（Bearer Token / API Key / Admin Cookie）"""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -6,10 +5,10 @@ from dataclasses import dataclass
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 
-from config import get_settings
+from core.config import get_settings
+from core.security import hash_api_key, jwt_decode
 from repositories.api_key_repo import ApiKeyRepository
 from repositories.user_repo import UserRepository
-from security import hash_api_key, jwt_decode
 
 API_KEY_HEADER = APIKeyHeader(name="X-API-Key", auto_error=False)
 BEARER = HTTPBearer(auto_error=False)
@@ -136,3 +135,4 @@ async def verify_api_key(
     request.state.user_id = user_id
     await api_key_repo.touch_last_used(api_key_id)
     return AuthenticatedApiKey(api_key_id=api_key_id, user_id=user_id, prefix=str(key.get("prefix", "")))
+

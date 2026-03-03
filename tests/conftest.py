@@ -7,7 +7,7 @@ import os
 import pytest
 from fastapi.testclient import TestClient
 
-from config import reset_settings
+from core.config import reset_settings
 from main import create_app
 
 

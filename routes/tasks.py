@@ -6,7 +6,7 @@ from typing import Dict, Any
 from fastapi import APIRouter, Depends, status, Response, UploadFile
 from fastapi.requests import Request
 
-from auth import AuthenticatedApiKey, verify_api_key
+from deps.auth import AuthenticatedApiKey, verify_api_key
 from schemas.response import APIResponse, success_response
 from schemas.task import TaskSubmit, TaskResponse, TaskCancelResponse
 from services.task_service import TaskService

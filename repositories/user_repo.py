@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from database import SQLiteDatabase
+from core.database import SQLiteDatabase
 
 
 class UserRepository:
@@ -39,4 +39,3 @@ class UserRepository:
         if row is None:
             return None
         return dict(row.data)
-
