@@ -40,7 +40,13 @@ async def create_api_key(
     settings = get_settings()
     key_hash = hash_api_key(api_key, pepper=settings.secret_key)
     prefix = api_key_prefix(api_key)
-    key_id = await repo.create_key(user_id=current.user_id, name=payload.name, key_hash=key_hash, prefix=prefix)
+    key_id = await repo.create_key(
+        user_id=current.user_id,
+        name=payload.name,
+        api_key=api_key,
+        key_hash=key_hash,
+        prefix=prefix,
+    )
     created_at = datetime.now(timezone.utc)
 
     return success_response(
@@ -60,6 +66,7 @@ async def list_api_keys(
             ApiKeyPublic(
                 id=_as_int(k.get("id")),
                 name=str(k["name"]),
+                api_key=str(k["api_key"]) if k.get("api_key") is not None else None,
                 prefix=str(k["prefix"]),
                 created_at=datetime.fromisoformat(str(k["created_at"])),
                 revoked_at=_parse_dt(k.get("revoked_at")),
@@ -81,4 +88,34 @@ async def revoke_api_key(
     if _as_int(key.get("user_id")) != current.user_id and not current.is_admin:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
     await repo.revoke_key(key_id)
+    return success_response(None)
+
+
+@router.post("/{key_id}/activate", response_model=APIResponse[None])
+async def activate_api_key(
+    key_id: int,
+    current: AuthenticatedUser = Depends(get_current_user),
+    repo: ApiKeyRepository = Depends(get_api_key_repo),
+) -> APIResponse[None]:
+    key = await repo.get_by_id(key_id)
+    if key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found.")
+    if _as_int(key.get("user_id")) != current.user_id and not current.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    await repo.activate_key(key_id)
+    return success_response(None)
+
+
+@router.delete("/{key_id}/hard", response_model=APIResponse[None])
+async def hard_delete_api_key(
+    key_id: int,
+    current: AuthenticatedUser = Depends(get_current_user),
+    repo: ApiKeyRepository = Depends(get_api_key_repo),
+) -> APIResponse[None]:
+    key = await repo.get_by_id(key_id)
+    if key is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="API key not found.")
+    if _as_int(key.get("user_id")) != current.user_id and not current.is_admin:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden.")
+    await repo.delete_key(key_id)
     return success_response(None)

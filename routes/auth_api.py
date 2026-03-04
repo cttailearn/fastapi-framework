@@ -75,3 +75,8 @@ async def login_user(
 @router.get("/me", response_model=APIResponse[UserPublic])
 async def get_me(current: AuthenticatedUser = Depends(get_current_user)) -> APIResponse[UserPublic]:
     return success_response(UserPublic(id=current.user_id, username=current.username, is_admin=current.is_admin))
+
+
+@router.post("/logout", response_model=APIResponse[None])
+async def logout_user(current: AuthenticatedUser = Depends(get_current_user)) -> APIResponse[None]:
+    return success_response(None)

@@ -1,11 +1,17 @@
 """任务 API 路由"""
 from __future__ import annotations
 
-from typing import Dict, Any
+import asyncio
+import json
+from pathlib import Path
+from typing import Any, Dict
+from uuid import uuid4
 
-from fastapi import APIRouter, Depends, status, Response, UploadFile
+from fastapi import APIRouter, Depends, status, Response
 from fastapi.requests import Request
+from starlette.datastructures import UploadFile
 
+from core.config import get_settings
 from deps.auth import AuthenticatedApiKey, verify_api_key
 from schemas.response import APIResponse, success_response
 from schemas.task import TaskSubmit, TaskResponse, TaskCancelResponse
@@ -24,12 +30,81 @@ async def get_task_service(request: Request) -> TaskService:
     return service
 
 
+def _uploads_dir() -> Path:
+    settings = get_settings()
+    upload_dir = settings.db_path.parent / "uploads"
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    return upload_dir
+
+
+async def _persist_upload(file: UploadFile) -> dict[str, Any]:
+    original_name = file.filename or "upload.bin"
+    suffix = Path(original_name).suffix
+    stored_name = f"{uuid4().hex}{suffix}"
+    path = _uploads_dir() / stored_name
+    content = await file.read()
+    await asyncio.to_thread(path.write_bytes, content)
+    return {
+        "stored_path": str(path),
+        "original_filename": original_name,
+        "content_type": file.content_type,
+        "size": len(content),
+    }
+
+
 @router.post(
     "",
     response_model=APIResponse[TaskResponse],
     status_code=status.HTTP_201_CREATED,
     summary="提交任务",
-    description="创建一个新的异步任务"
+    description="创建一个新的异步任务",
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["type"],
+                        "properties": {
+                            "type": {"type": "string", "description": "任务类型"},
+                            "data": {
+                                "oneOf": [{"type": "string"}, {"type": "object"}],
+                                "description": "任务数据（文本内容或对象）",
+                            },
+                            "callback": {"type": "string", "description": "回调 URL"},
+                            "config": {"type": "object", "description": "任务配置参数"},
+                        },
+                    }
+                },
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["type"],
+                        "properties": {
+                            "type": {"type": "string", "description": "任务类型"},
+                            "data": {"type": "string", "description": "任务数据（JSON 字符串或纯文本）"},
+                            "file": {"type": "string", "format": "binary", "description": "上传的文件"},
+                            "callback": {"type": "string", "description": "回调 URL"},
+                            "config": {"type": "string", "description": "任务配置（JSON 字符串）"},
+                        },
+                    }
+                },
+                "application/x-www-form-urlencoded": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["type"],
+                        "properties": {
+                            "type": {"type": "string", "description": "任务类型"},
+                            "data": {"type": "string", "description": "任务数据（JSON 字符串或纯文本）"},
+                            "callback": {"type": "string", "description": "回调 URL"},
+                            "config": {"type": "string", "description": "任务配置（JSON 字符串）"},
+                        },
+                    }
+                },
+            },
+        }
+    },
 )
 async def submit_task(
     request: Request,
@@ -37,8 +112,6 @@ async def submit_task(
     api_key: AuthenticatedApiKey = api_key_dependency,
 ) -> APIResponse[TaskResponse]:
     """提交任务接口（支持 JSON 和 multipart/form-data）"""
-    import json
-    
     content_type = request.headers.get("content-type", "")
     
     # 判断是 JSON 还是 multipart/form-data
@@ -111,16 +184,22 @@ async def submit_task(
             config=config_dict,
         )
 
-        file_value = form.get("file")
-        if isinstance(file_value, UploadFile) and file_value.filename:
-            file_content = await file_value.read()
+        files: list[UploadFile] = []
+        for key, value in form.multi_items():
+            if key == "file" and isinstance(value, UploadFile):
+                files.append(value)
+
+        stored_files: list[dict[str, Any]] = []
+        for file in files:
+            if file.filename:
+                stored_files.append(await _persist_upload(file))
+
+        if stored_files:
             if task_submit.data is None:
                 task_submit.data = {}
             elif isinstance(task_submit.data, str):
                 task_submit.data = {"content": task_submit.data}
-            task_submit.data["filename"] = file_value.filename
-            task_submit.data["content_type"] = file_value.content_type
-            task_submit.data["size"] = len(file_content)
+            task_submit.data["files"] = stored_files
     else:
         from fastapi import HTTPException
         raise HTTPException(

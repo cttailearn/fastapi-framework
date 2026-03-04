@@ -83,35 +83,6 @@ async def get_current_user(
     return AuthenticatedUser(user_id=user_id, username=str(user.get("username", "")), is_admin=is_admin)
 
 
-async def require_admin_user(
-    request: Request,
-    user_repo: UserRepository = Depends(get_user_repo),
-) -> AuthenticatedUser:
-    settings = get_settings()
-    token = request.cookies.get(settings.admin_cookie_name)
-    if token is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not logged in.")
-    try:
-        payload = jwt_decode(token, secret=settings.secret_key)
-    except ValueError:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token.")
-
-    sub = payload.get("sub")
-    adm = payload.get("adm")
-    if not isinstance(sub, int) or adm != 1:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
-
-    user = await user_repo.get_by_id(sub)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found.")
-    is_admin = bool(_as_int(user.get("is_admin"), error_detail="Invalid user."))
-    if not is_admin:
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Admin required.")
-    user_id = _as_int(user.get("id"), error_detail="Invalid user.")
-    request.state.user_id = user_id
-    return AuthenticatedUser(user_id=user_id, username=str(user.get("username", "")), is_admin=True)
-
-
 async def verify_api_key(
     request: Request,
     api_key: str | None = Depends(API_KEY_HEADER),

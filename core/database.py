@@ -44,6 +44,7 @@ class SQLiteDatabase:
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
               name TEXT NOT NULL,
+              api_key TEXT,
               key_hash TEXT NOT NULL UNIQUE,
               prefix TEXT NOT NULL,
               created_at TEXT NOT NULL,
@@ -52,6 +53,10 @@ class SQLiteDatabase:
             );
             """.strip()
         )
+        cols = await self.fetchall("PRAGMA table_info(api_keys);")
+        col_names = {str(r["name"]) for r in cols}
+        if "api_key" not in col_names:
+            await self.execute("ALTER TABLE api_keys ADD COLUMN api_key TEXT;")
         await self.execute("CREATE INDEX IF NOT EXISTS idx_api_keys_user_id ON api_keys(user_id);")
         await self.execute(
             """

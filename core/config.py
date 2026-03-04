@@ -11,8 +11,6 @@ class Settings:
     db_path: Path
     secret_key: str
     access_token_ttl_seconds: int
-    admin_cookie_name: str
-    admin_cookie_ttl_seconds: int
 
 
 _SETTINGS: Settings | None = None
@@ -28,16 +26,12 @@ def get_settings() -> Settings:
     db_path = Path(os.getenv("APP_DB_PATH", str(default_db_path))).resolve()
     secret_key = os.getenv("APP_SECRET_KEY", "dev-secret-change-me")
     access_token_ttl_seconds = int(os.getenv("ACCESS_TOKEN_TTL_SECONDS", str(60 * 60 * 24)))
-    admin_cookie_name = os.getenv("ADMIN_COOKIE_NAME", "admin_token")
-    admin_cookie_ttl_seconds = int(os.getenv("ADMIN_COOKIE_TTL_SECONDS", str(60 * 60 * 24)))
 
     _SETTINGS = Settings(
         base_dir=base_dir,
         db_path=db_path,
         secret_key=secret_key,
         access_token_ttl_seconds=access_token_ttl_seconds,
-        admin_cookie_name=admin_cookie_name,
-        admin_cookie_ttl_seconds=admin_cookie_ttl_seconds,
     )
     return _SETTINGS
 

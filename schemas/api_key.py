@@ -12,6 +12,7 @@ class ApiKeyCreateRequest(BaseModel):
 class ApiKeyPublic(BaseModel):
     id: int
     name: str
+    api_key: str | None = None
     prefix: str
     created_at: datetime
     revoked_at: datetime | None = None

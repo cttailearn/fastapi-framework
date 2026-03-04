@@ -31,6 +31,18 @@ def _create_api_key(client: TestClient, token: str) -> str:
     return api_key
 
 
+def _register_and_get_user_token(client: TestClient, username: str) -> str:
+    r = client.post("/v1/auth/register", json={"username": username, "password": "password-123"})
+    assert r.status_code == 201
+    assert r.json()["data"]["is_admin"] is False
+
+    r = client.post("/v1/auth/login", json={"username": username, "password": "password-123"})
+    assert r.status_code == 200
+    token = r.json()["data"]["access_token"]
+    assert isinstance(token, str) and token
+    return token
+
+
 class TestAuthentication:
     def test_tasks_requires_api_key(self, client: TestClient, sample_task_data: dict[str, Any]) -> None:
         response = client.post("/v1/tasks", json=sample_task_data)
@@ -58,6 +70,27 @@ class TestSubmitTask:
         assert data["type"] == "text"
         assert data["status"] == "pending"
         assert "task_id" in data
+
+    def test_submit_task_multipart_with_file(self, client: TestClient) -> None:
+        from core.config import get_settings
+
+        token = _register_and_get_admin_token(client)
+        api_key = _create_api_key(client, token)
+
+        settings = get_settings()
+        upload_dir = settings.db_path.parent / "uploads"
+
+        response = client.post(
+            "/v1/tasks",
+            data={"type": "text", "data": json.dumps({"content": "hello"})},
+            files={"file": ("hello.txt", b"hello", "text/plain")},
+            headers={"X-API-Key": api_key},
+        )
+        assert response.status_code == 201
+        payload = response.json()
+        assert payload["code"] == 0
+        assert upload_dir.exists()
+        assert any(upload_dir.iterdir())
 
     def test_submit_task_missing_type(self, client: TestClient) -> None:
         token = _register_and_get_admin_token(client)
@@ -123,3 +156,103 @@ class TestTaskLifecycle:
 
         get_response = client.get(f"/v1/tasks/{task_id}", headers={"X-API-Key": api_key})
         assert get_response.status_code == 404
+
+
+class TestAdminApi:
+    def test_admin_overview_requires_admin(self, client: TestClient) -> None:
+        token = _register_and_get_admin_token(client)
+
+        r = client.get("/v1/admin/overview")
+        assert r.status_code == 401
+
+        user_token = _register_and_get_user_token(client, "user1")
+        r = client.get("/v1/admin/overview", headers={"Authorization": f"Bearer {user_token}"})
+        assert r.status_code == 403
+
+        r = client.get("/v1/admin/overview", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["code"] == 0
+        assert payload["data"]["users"] >= 1
+
+    def test_admin_tasks_list(self, client: TestClient, sample_task_data: dict[str, Any]) -> None:
+        token = _register_and_get_admin_token(client)
+        api_key = _create_api_key(client, token)
+        r = client.post("/v1/tasks", json=sample_task_data, headers={"X-API-Key": api_key})
+        assert r.status_code == 201
+
+        r = client.get("/v1/admin/tasks", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["code"] == 0
+        assert isinstance(payload["data"], list)
+
+    def test_api_keys_list_returns_full_api_key(self, client: TestClient) -> None:
+        token = _register_and_get_admin_token(client)
+        api_key = _create_api_key(client, token)
+
+        r = client.get("/v1/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["code"] == 0
+        assert payload["data"][0]["api_key"] == api_key
+
+        r = client.get("/v1/admin/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["code"] == 0
+        assert any(item["api_key"] == api_key for item in payload["data"])
+
+    def test_api_key_hard_delete(self, client: TestClient, sample_task_data: dict[str, Any]) -> None:
+        token = _register_and_get_admin_token(client)
+        api_key = _create_api_key(client, token)
+
+        r = client.post("/v1/tasks", json=sample_task_data, headers={"X-API-Key": api_key})
+        assert r.status_code == 201
+
+        r = client.get("/v1/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        key_id = r.json()["data"][0]["id"]
+
+        r = client.delete(f"/v1/api-keys/{key_id}/hard", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+        r = client.get("/v1/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        assert all(item["id"] != key_id for item in r.json()["data"])
+
+    def test_api_key_activate_after_revoke(self, client: TestClient) -> None:
+        token = _register_and_get_admin_token(client)
+        _create_api_key(client, token)
+        r = client.get("/v1/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        key_id = r.json()["data"][0]["id"]
+
+        r = client.delete(f"/v1/api-keys/{key_id}", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+        r = client.post(f"/v1/api-keys/{key_id}/activate", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+
+        r = client.get("/v1/api-keys", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        assert r.json()["data"][0]["revoked_at"] is None
+
+    def test_admin_task_detail(self, client: TestClient, sample_task_data: dict[str, Any]) -> None:
+        token = _register_and_get_admin_token(client)
+        api_key = _create_api_key(client, token)
+        r = client.post("/v1/tasks", json=sample_task_data, headers={"X-API-Key": api_key})
+        assert r.status_code == 201
+        task_id = r.json()["data"]["task_id"]
+
+        r = client.get(f"/v1/admin/tasks/{task_id}", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        payload = r.json()
+        assert payload["code"] == 0
+        assert payload["data"]["task_id"] == task_id
+
+    def test_logout_endpoint(self, client: TestClient) -> None:
+        token = _register_and_get_admin_token(client)
+        r = client.post("/v1/auth/logout", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 200
+        assert r.json()["code"] == 0

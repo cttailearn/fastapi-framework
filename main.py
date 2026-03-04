@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
-from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from core.config import get_settings
@@ -38,18 +38,24 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.task_repo = TaskRepository(db)
     app.state.request_log_repo = RequestLogRepository(db)
     app.state.task_service = TaskService(app.state.task_repo)
-    app.state.templates = Jinja2Templates(directory=str(settings.base_dir / "ui"))
 
     yield
 
 
 def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
+    settings = get_settings()
     app = FastAPI(
         title="异步任务处理接口",
         description="统一、稳定、可扩展的异步任务处理 API 服务",
         version="1.0.0",
         lifespan=lifespan,
+    )
+
+    app.mount(
+        "/admin",
+        StaticFiles(directory=str(settings.base_dir / "ui" / "dist"), html=True, check_dir=False),
+        name="admin",
     )
     
     @app.middleware("http")
@@ -85,12 +91,12 @@ def create_app() -> FastAPI:
                 except Exception:
                     pass
 
-    from routes import admin_ui, api_keys, auth_api, tasks
+    from routes import admin_api, api_keys, auth_api, tasks
 
     app.include_router(auth_api.router)
     app.include_router(api_keys.router)
     app.include_router(tasks.router)
-    app.include_router(admin_ui.router)
+    app.include_router(admin_api.router)
     
     # 注册异常处理器
     app.add_exception_handler(StarletteHTTPException, http_exception_handler)
@@ -183,7 +189,7 @@ if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
         "main:app",
-        host="0.0.0.0",
-        port=8000,
+        host="127.0.0.1",
+        port=9001,
         reload=True,
     )
