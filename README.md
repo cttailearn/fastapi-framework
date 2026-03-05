@@ -42,13 +42,13 @@ uv run main.py
 ### 2) 启动服务
 
 ```bash
-uvicorn main:app --reload --host 0.0.0.0 --port 8000
+uvicorn main:app --reload --host 0.0.0.0 --port 8080
 ```
 
 打开：
 
-- OpenAPI：`http://localhost:8000/docs`
-- 管理后台：`http://localhost:8000/admin/`
+- OpenAPI：`http://localhost:8080/docs`
+- 管理后台：`http://localhost:8080/admin/`
 
 ## 环境变量
 
