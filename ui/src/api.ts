@@ -145,6 +145,7 @@ export type AdminTask = {
   created_at: string;
   updated_at: string;
   completed_at: string | null;
+  error: Record<string, unknown> | null;
 };
 
 export type AdminTaskDetail = AdminTask & {
@@ -153,6 +154,14 @@ export type AdminTaskDetail = AdminTask & {
   config: Record<string, unknown> | null;
   result: Record<string, unknown> | null;
   error: Record<string, unknown> | null;
+  backend_root: string | null;
+  backend_files: Array<{
+    path: string;
+    is_dir: boolean;
+    size: number | null;
+    modified_at: string | null;
+  }> | null;
+  agent_running: boolean | null;
 };
 
 export async function listTasks(limit = 200): Promise<AdminTask[]> {
