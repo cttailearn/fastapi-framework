@@ -1,4 +1,4 @@
-"""FastAPI 异步任务处理接口服务"""
+"""LAMMPS.AI"""
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
@@ -38,6 +38,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     app.state.task_repo = TaskRepository(db)
     app.state.request_log_repo = RequestLogRepository(db)
     app.state.task_service = TaskService(app.state.task_repo)
+    await app.state.task_service.resume_incomplete_tasks()
 
     yield
 
@@ -46,8 +47,8 @@ def create_app() -> FastAPI:
     """创建 FastAPI 应用"""
     settings = get_settings()
     app = FastAPI(
-        title="异步任务处理接口",
-        description="统一、稳定、可扩展的异步任务处理 API 服务",
+        title="LAMMPS.AI后台接口",
+        description="统一、稳定、可扩展的LAMMPS.AI异步任务处理 API 服务",
         version="1.0.0",
         lifespan=lifespan,
     )
@@ -186,10 +187,40 @@ app = create_app()
 
 
 if __name__ == "__main__":
+    import inspect
+    import os
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="127.0.0.1",
-        port=8080,
-        reload=True,
-    )
+    from pathlib import Path
+
+    base_dir = Path(__file__).resolve().parent
+    port_raw = os.getenv("PORT") or os.getenv("APP_PORT") or "8080"
+    try:
+        port_value = int(port_raw)
+    except Exception:
+        port_value = 8080
+    kwargs: dict[str, Any] = {"host": "0.0.0.0", "port": port_value}
+    if "reload_dirs" in inspect.signature(uvicorn.run).parameters:
+        kwargs["reload_dirs"] = [
+            str(base_dir / "core"),
+            str(base_dir / "deps"),
+            str(base_dir / "repositories"),
+            str(base_dir / "routes"),
+            str(base_dir / "schemas"),
+            str(base_dir / "services"),
+        ]
+    if "reload_includes" in inspect.signature(uvicorn.run).parameters:
+        kwargs["reload_includes"] = ["main.py"]
+    if "reload_excludes" in inspect.signature(uvicorn.run).parameters:
+        kwargs["reload_excludes"] = [
+            "workspace",
+            "workspace/*",
+            "workspace/**",
+            "workspace\\*",
+            "workspace\\**",
+            "db",
+            "db/*",
+            "db/**",
+            "db\\*",
+            "db\\**",
+        ]
+    uvicorn.run("main:app", **kwargs)

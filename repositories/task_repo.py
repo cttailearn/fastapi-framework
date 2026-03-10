@@ -113,6 +113,18 @@ class TaskRepository:
         )
         return [self._deserialize_task(dict(r.data)) for r in rows]
 
+    async def list_by_status(self, statuses: list[TaskStatus], limit: int = 200) -> list[dict[str, Any]]:
+        if not statuses:
+            return []
+        placeholders = ", ".join(["?"] * len(statuses))
+        params: list[Any] = [s.value for s in statuses]
+        params.append(limit)
+        rows = await self._db.fetchall(
+            f"SELECT * FROM tasks WHERE status IN ({placeholders}) AND completed_at IS NULL ORDER BY created_at ASC LIMIT ?;",
+            tuple(params),
+        )
+        return [self._deserialize_task(dict(r.data)) for r in rows]
+
     async def count_tasks(self) -> int:
         row = await self._db.fetchone("SELECT COUNT(1) AS cnt FROM tasks;")
         if row is None:

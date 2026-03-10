@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from enum import Enum
 from datetime import datetime
-from typing import Optional, Any, Dict, Union
+from typing import Optional, Any, Dict
 
 from pydantic import BaseModel, Field, ConfigDict
 
@@ -19,9 +19,9 @@ class TaskStatus(str, Enum):
 
 class TaskSubmit(BaseModel):
     """提交任务请求"""
-    type: str = Field(..., description="任务类型，如 'text', 'image', 'video'")
-    data: Optional[Union[str, Dict[str, Any]]] = Field(None, description="任务数据（文本内容或对象）")
-    callback: Optional[str] = Field(None, description="回调 URL")
+    type: str = Field(..., description="任务类型，如 'agent' / 'dummy' / 'echo'（也可为任意业务自定义字符串）")
+    message: Optional[str] = Field(None, description="任务文本内容（例如 LAMMPS 模拟需求）")
+    messages: Optional[list[Dict[str, Any]]] = Field(None, description="对话消息列表（role/content）")
     config: Optional[Dict[str, Any]] = Field(None, description="任务配置参数")
 
 
@@ -34,9 +34,13 @@ class TaskResponse(BaseModel):
     created_at: datetime = Field(..., description="创建时间")
     updated_at: datetime = Field(..., description="最后更新时间")
     completed_at: Optional[datetime] = Field(None, description="完成时间")
+    config: Optional[Dict[str, Any]] = Field(None, description="任务配置参数（如 backend_root）")
     result: Optional[Dict[str, Any]] = Field(None, description="任务结果")
+    backend_root: Optional[str] = Field(None, description="智能体工作目录（FilesystemBackend root）")
+    backend_files: Optional[list[Dict[str, Any]]] = Field(None, description="工作目录内文件列表")
+    agent_running: Optional[bool] = Field(None, description="是否仍在本进程内运行中")
     error: Optional[Dict[str, Any]] = Field(None, description="错误信息")
-    estimated_remaining_seconds: Optional[int] = Field(None, description="预计剩余秒数")
+    estimated_remaining_seconds: Optional[int] = Field(None, description="任务已运行秒数（直到结束）")
 
     model_config = ConfigDict(
         from_attributes=True,
@@ -50,7 +54,7 @@ class TaskResponse(BaseModel):
                     "progress": 45,
                     "created_at": "2025-03-15T10:00:00Z",
                     "updated_at": "2025-03-15T10:01:30Z",
-                    "estimated_remaining_seconds": 120
+                    "estimated_remaining_seconds": 90
                 },
                 # 完成状态
                 {
@@ -61,7 +65,8 @@ class TaskResponse(BaseModel):
                     "created_at": "2025-03-15T10:00:00Z",
                     "updated_at": "2025-03-15T10:01:30Z",
                     "completed_at": "2025-03-15T10:01:30Z",
-                    "result": {"sentiment": "positive", "keywords": ["示例", "文本"]}
+                    "estimated_remaining_seconds": 90,
+                    "result": {"ai_message": ["h", "e", "llo"], "final": True}
                 },
                 # 失败状态
                 {

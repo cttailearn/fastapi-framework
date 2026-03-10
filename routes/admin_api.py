@@ -120,11 +120,13 @@ async def admin_get_task(
     task_id: str,
     admin: AuthenticatedUser = Depends(require_admin),
     task_repo: TaskRepository = Depends(get_task_repo),
+    service: TaskService = Depends(get_task_service),
 ) -> APIResponse[AdminTaskDetail]:
     task = await task_repo.get(task_id)
     if task is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Task not found.")
-    return success_response(AdminTaskDetail.model_validate(task))
+    enriched = await service.enrich_task_for_admin(task)
+    return success_response(AdminTaskDetail.model_validate(enriched))
 
 
 @router.post("/tasks/{task_id}/cancel", response_model=APIResponse[TaskCancelResponse])

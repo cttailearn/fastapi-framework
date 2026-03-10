@@ -1,17 +1,13 @@
 """任务 API 路由"""
 from __future__ import annotations
 
-import asyncio
 import json
-from pathlib import Path
 from typing import Any, Dict
-from uuid import uuid4
 
-from fastapi import APIRouter, Depends, status, Response
+from fastapi import APIRouter, Depends, status, Response, HTTPException
 from fastapi.requests import Request
 from starlette.datastructures import UploadFile
 
-from core.config import get_settings
 from deps.auth import AuthenticatedApiKey, verify_api_key
 from schemas.response import APIResponse, success_response
 from schemas.task import TaskSubmit, TaskResponse, TaskCancelResponse
@@ -30,28 +26,6 @@ async def get_task_service(request: Request) -> TaskService:
     return service
 
 
-def _uploads_dir() -> Path:
-    settings = get_settings()
-    upload_dir = settings.db_path.parent / "uploads"
-    upload_dir.mkdir(parents=True, exist_ok=True)
-    return upload_dir
-
-
-async def _persist_upload(file: UploadFile) -> dict[str, Any]:
-    original_name = file.filename or "upload.bin"
-    suffix = Path(original_name).suffix
-    stored_name = f"{uuid4().hex}{suffix}"
-    path = _uploads_dir() / stored_name
-    content = await file.read()
-    await asyncio.to_thread(path.write_bytes, content)
-    return {
-        "stored_path": str(path),
-        "original_filename": original_name,
-        "content_type": file.content_type,
-        "size": len(content),
-    }
-
-
 @router.post(
     "",
     response_model=APIResponse[TaskResponse],
@@ -68,12 +42,32 @@ async def _persist_upload(file: UploadFile) -> dict[str, Any]:
                         "required": ["type"],
                         "properties": {
                             "type": {"type": "string", "description": "任务类型"},
-                            "data": {
-                                "oneOf": [{"type": "string"}, {"type": "object"}],
-                                "description": "任务数据（文本内容或对象）",
+                            "message": {"type": "string", "description": "任务文本内容（例如 LAMMPS 模拟需求）"},
+                            "messages": {
+                                "type": "array",
+                                "description": "对话消息列表（role/content）",
+                                "items": {
+                                    "type": "object",
+                                    "required": ["role", "content"],
+                                    "properties": {
+                                        "role": {"type": "string"},
+                                        "content": {"type": "string"},
+                                    },
+                                },
                             },
-                            "callback": {"type": "string", "description": "回调 URL"},
-                            "config": {"type": "object", "description": "任务配置参数"},
+                            "config": {
+                                "type": "object",
+                                "description": "任务配置参数",
+                                "properties": {
+                                    "runner": {"type": "string", "enum": ["deepagent", "dummy", "echo", "command", "exec"]},
+                                    "thread-id": {"type": "string"},
+                                    "recursion-limit": {"type": "integer"},
+                                    "no-stream": {"type": "boolean"},
+                                    "thread_id": {"type": "string"},
+                                    "recursion_limit": {"type": "integer"},
+                                    "no_stream": {"type": "boolean"},
+                                },
+                            },
                         },
                     }
                 },
@@ -83,9 +77,13 @@ async def _persist_upload(file: UploadFile) -> dict[str, Any]:
                         "required": ["type"],
                         "properties": {
                             "type": {"type": "string", "description": "任务类型"},
-                            "data": {"type": "string", "description": "任务数据（JSON 字符串或纯文本）"},
-                            "file": {"type": "string", "format": "binary", "description": "上传的文件"},
-                            "callback": {"type": "string", "description": "回调 URL"},
+                            "message": {"type": "string", "description": "任务文本内容（例如 LAMMPS 模拟需求）"},
+                            "messages": {"type": "string", "description": "对话消息列表（JSON 字符串）"},
+                            "file": {
+                                "type": "array",
+                                "items": {"type": "string", "format": "binary"},
+                                "description": "上传的文件（可重复传 file 字段）",
+                            },
                             "config": {"type": "string", "description": "任务配置（JSON 字符串）"},
                         },
                     }
@@ -96,8 +94,8 @@ async def _persist_upload(file: UploadFile) -> dict[str, Any]:
                         "required": ["type"],
                         "properties": {
                             "type": {"type": "string", "description": "任务类型"},
-                            "data": {"type": "string", "description": "任务数据（JSON 字符串或纯文本）"},
-                            "callback": {"type": "string", "description": "回调 URL"},
+                            "message": {"type": "string", "description": "任务文本内容（例如 LAMMPS 模拟需求）"},
+                            "messages": {"type": "string", "description": "对话消息列表（JSON 字符串）"},
                             "config": {"type": "string", "description": "任务配置（JSON 字符串）"},
                         },
                     }
@@ -113,13 +111,14 @@ async def submit_task(
 ) -> APIResponse[TaskResponse]:
     """提交任务接口（支持 JSON 和 multipart/form-data）"""
     content_type = request.headers.get("content-type", "")
+    task_submit: TaskSubmit
+    files: list[UploadFile] = []
     
     # 判断是 JSON 还是 multipart/form-data
     if "application/json" in content_type:
         try:
             body = await request.json()
         except json.JSONDecodeError:
-            from fastapi import HTTPException
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid JSON body",
@@ -127,46 +126,66 @@ async def submit_task(
 
         type_value = body.get("type")
         if not isinstance(type_value, str) or not type_value.strip():
-            from fastapi import HTTPException
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Field 'type' is required",
             )
 
+        message_value = body.get("message")
+        if not isinstance(message_value, str) or not message_value.strip():
+            message_value = body.get("content") if isinstance(body.get("content"), str) else None
+        message_str = message_value.strip() if isinstance(message_value, str) and message_value.strip() else None
+
+        messages_value = body.get("messages")
+        messages_list: list[Dict[str, Any]] | None = messages_value if isinstance(messages_value, list) else None
+
+        config_raw = body.get("config")
+        config_value: Dict[str, Any] | None = config_raw if isinstance(config_raw, dict) else None
+        if config_value is None and isinstance(config_raw, str) and config_raw.strip():
+            try:
+                loaded = json.loads(config_raw)
+                config_value = loaded if isinstance(loaded, dict) else None
+            except json.JSONDecodeError:
+                config_value = None
+        lifted: Dict[str, Any] = {}
+        for k in ("thread-id", "recursion-limit", "no-stream", "thread_id", "recursion_limit", "no_stream"):
+            if k in body:
+                lifted[k] = body.get(k)
+        if config_value is None:
+            config_value = lifted or None
+        elif lifted:
+            for k, v in lifted.items():
+                config_value.setdefault(k, v)
+
         task_submit = TaskSubmit(
             type=type_value,
-            data=body.get("data"),
-            callback=body.get("callback"),
-            config=body.get("config"),
+            message=message_str,
+            messages=messages_list,
+            config=config_value,
         )
     elif "multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type:
         form = await request.form()
 
         type_value = form.get("type") or form.get("type_")
         if not isinstance(type_value, str) or not type_value.strip():
-            from fastapi import HTTPException
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Field 'type' is required",
             )
 
-        data_value = form.get("data")
-        data_parsed: str | Dict[str, Any] | None
-        if isinstance(data_value, str) and data_value.strip():
-            data_str = data_value.strip()
-            if data_str.startswith("{") and data_str.endswith("}"):
-                try:
-                    loaded = json.loads(data_str)
-                    data_parsed = loaded if isinstance(loaded, dict) else data_str
-                except json.JSONDecodeError:
-                    data_parsed = data_str
-            else:
-                data_parsed = data_str
-        else:
-            data_parsed = None
+        message_value = form.get("message")
+        if not isinstance(message_value, str) or not message_value.strip():
+            message_value = form.get("content")
+        message_str = message_value.strip() if isinstance(message_value, str) and message_value.strip() else None
 
-        callback_value = form.get("callback")
-        callback_str = callback_value.strip() if isinstance(callback_value, str) and callback_value.strip() else None
+        messages_value = form.get("messages")
+        messages_list = None
+        if isinstance(messages_value, str) and messages_value.strip() and messages_value != "string":
+            try:
+                loaded_messages = json.loads(messages_value)
+                messages_list = loaded_messages if isinstance(loaded_messages, list) else None
+            except json.JSONDecodeError:
+                messages_list = None
 
         config_value = form.get("config")
         config_dict: Dict[str, Any] | None = None
@@ -176,38 +195,40 @@ async def submit_task(
                 config_dict = loaded_config if isinstance(loaded_config, dict) else None
             except json.JSONDecodeError:
                 config_dict = None
+        lifted = {}
+        for k in ("thread-id", "recursion-limit", "no-stream", "thread_id", "recursion_limit", "no_stream"):
+            v = form.get(k)
+            if v is None:
+                continue
+            lifted[k] = v
+        if config_dict is None:
+            config_dict = lifted or None
+        elif lifted:
+            for k, v in lifted.items():
+                config_dict.setdefault(k, v)
 
         task_submit = TaskSubmit(
             type=type_value,
-            data=data_parsed,
-            callback=callback_str,
+            message=message_str,
+            messages=messages_list,
             config=config_dict,
         )
 
-        files: list[UploadFile] = []
         for key, value in form.multi_items():
             if key == "file" and isinstance(value, UploadFile):
                 files.append(value)
-
-        stored_files: list[dict[str, Any]] = []
-        for file in files:
-            if file.filename:
-                stored_files.append(await _persist_upload(file))
-
-        if stored_files:
-            if task_submit.data is None:
-                task_submit.data = {}
-            elif isinstance(task_submit.data, str):
-                task_submit.data = {"content": task_submit.data}
-            task_submit.data["files"] = stored_files
     else:
-        from fastapi import HTTPException
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Unsupported content type. Use application/json or multipart/form-data.",
         )
     
-    task = await service.submit_task(task_submit, api_key_id=api_key.api_key_id, user_id=api_key.user_id)
+    task = await service.submit_task(
+        task_submit,
+        api_key_id=api_key.api_key_id,
+        user_id=api_key.user_id,
+        uploaded_files=files if ("multipart/form-data" in content_type or "application/x-www-form-urlencoded" in content_type) else None,
+    )
     return success_response(task)
 
 

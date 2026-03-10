@@ -51,6 +51,7 @@ class AdminTaskListItem(BaseModel):
     created_at: datetime
     updated_at: datetime
     completed_at: datetime | None = None
+    error: dict[str, Any] | None = None
 
 
 class AdminTaskDetail(BaseModel):
@@ -66,3 +67,6 @@ class AdminTaskDetail(BaseModel):
     config: dict[str, Any] | None = None
     result: dict[str, Any] | None = None
     error: dict[str, Any] | None = None
+    backend_root: str | None = None
+    backend_files: list[dict[str, Any]] | None = None
+    agent_running: bool | None = None
